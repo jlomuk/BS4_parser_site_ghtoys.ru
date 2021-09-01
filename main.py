@@ -1,23 +1,22 @@
-import requests
+import aiohttp
+import asyncio
 from bs4 import BeautifulSoup
-from time import sleep
-from requests.exceptions import ConnectionError
 
 from core.data_store_methods import store_datadict_to_json
 from core.exceptions import NoPageToParse
 from core.fields_for_parsing import get_name_product, get_code_product, get_descriptions, get_price
 from settings import URL
 
+DATADICT = []
 
-def get_page_html(url):
-    """
-    Получение контента страницы по url адресу.
-    Возвращает страницу в текстовом виде. При 404 выкидывает исключение.
-    """
-    data_html = requests.get(url, allow_redirects=True)
-    if data_html.status_code == 404:
-        raise NoPageToParse
-    return data_html.text
+
+async def get_page_html(session, url):
+    """Получение контента страницы по url адресу.
+    Возвращает страницу в текстовом виде. При 404 выкидывает исключение."""
+    async with session.get(url) as response:
+        if response.status == 404:
+            raise NoPageToParse(url=url)
+        return await response.text()
 
 
 def create_list_with_games_from_html_page(html_text):
@@ -44,28 +43,36 @@ def add_data_in_temp_dict(datadict, games_list):
         datadict.append(detail_game)
 
 
-def start_parse():
-    """Последовательно перебирает все позиции на каждой странице категории. """
-    page = 1
-    datadict = []
+async def create_parser_tast(url, session, page, datadict):
+    html_text = await get_page_html(session, url)
+    games_list = create_list_with_games_from_html_page(html_text)
+    add_data_in_temp_dict(datadict, games_list)
+    print(f'страница {page} -- парсинг завершен')
+    print('------------------------------------')
+
+
+async def start_parse():
+    """Последовательно перебирает все позиции на каждой странице переданной категории категории."""
+    tasks = []
+    page = 24
+    flag = True
     category = input('введите категорию из url сайта: ').strip()
-    while True:
-        url = URL.format(category, page)
-        try:
-            html_text = get_page_html(url)
-        except ConnectionError:
-            sleep(7)
-            continue
-        except NoPageToParse:
-            break
-        games_list = create_list_with_games_from_html_page(html_text)
-        add_data_in_temp_dict(datadict, games_list)
-        print(f'страница {page} -- парсинг завершен')
-        print('------------------------------------')
-        page += 1
-    store_datadict_to_json(datadict)
+    async with aiohttp.ClientSession() as session:
+        while flag:
+            url = URL.format(category, page)
+            task = asyncio.create_task(create_parser_tast(url, session, page, DATADICT))
+            tasks.append(task)
+            if len(tasks) > 3:
+                try:
+                    await asyncio.gather(*tasks)
+                except NoPageToParse as e:
+                    flag = False
+                    continue
+                tasks = []
+            page += 1
+    store_datadict_to_json(DATADICT)
     print('Успешно завершено')
 
 
 if __name__ == '__main__':
-    start_parse()
+    asyncio.run(start_parse())
