@@ -54,7 +54,7 @@ def start_parse():
         try:
             html_text = get_page_html(url)
         except ConnectionError:
-            sleep(7)
+            sleep(5)
             continue
         except NoPageToParse:
             break
@@ -63,7 +63,7 @@ def start_parse():
         print(f'страница {page} -- парсинг завершен')
         print('------------------------------------')
         page += 1
-    store_datadict_to_json(datadict)
+    store_datadict_to_json(datadict, category)
     print('Успешно завершено')
 
 
