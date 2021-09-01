@@ -43,35 +43,31 @@ def add_data_in_temp_dict(datadict, games_list):
         datadict.append(detail_game)
 
 
-async def create_parser_tast(url, session, page, datadict):
+async def create_parser_task(url, session, page, datadict):
     html_text = await get_page_html(session, url)
     games_list = create_list_with_games_from_html_page(html_text)
     add_data_in_temp_dict(datadict, games_list)
-    print(f'страница {page} -- парсинг завершен')
-    print('------------------------------------')
+    print(f'страница {page} -- oбработка --')
 
 
 async def start_parse():
     """Последовательно перебирает все позиции на каждой странице переданной категории категории."""
     tasks = []
-    page = 24
-    flag = True
+    page = 1
     category = input('введите категорию из url сайта: ').strip()
     async with aiohttp.ClientSession() as session:
-        while flag:
+        while True:
             url = URL.format(category, page)
-            task = asyncio.create_task(create_parser_tast(url, session, page, DATADICT))
+            task = asyncio.create_task(create_parser_task(url, session, page, DATADICT))
             tasks.append(task)
-            if len(tasks) > 3:
-                try:
-                    await asyncio.gather(*tasks)
-                except NoPageToParse as e:
-                    flag = False
-                    continue
+            if len(tasks) > 20:
+                await asyncio.gather(*tasks, return_exceptions=True)
+                if any(task.exception() for task in tasks):
+                    break
                 tasks = []
             page += 1
-    store_datadict_to_json(DATADICT)
-    print('Успешно завершено')
+    store_datadict_to_json(DATADICT, category)
+    print(f'Добавлено {len(DATADICT)} записей\n Успешно завершено')
 
 
 if __name__ == '__main__':
